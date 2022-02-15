@@ -7,6 +7,7 @@ import androidx.core.content.ContextCompat;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -16,6 +17,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -34,16 +36,25 @@ import org.tensorflow.lite.support.image.ops.ResizeOp;
 import org.tensorflow.lite.support.image.ops.ResizeWithCropOrPadOp;
 import org.tensorflow.lite.support.label.TensorLabel;
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
-
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+
+import com.example.sneakersclassifier.ImageClassifier;
 
 public class MainActivity extends AppCompatActivity {
+
+    // requests codes to identify select, camera and permission requests
+    private static final int SELECT_IMAGE_REQUEST_CODE = 10000;
+    private static final int CAMERA_REQUEST_CODE = 10001;
+    private static final int PERMISSION_REQUEST_CODE = 200;
+
 
     private Bitmap bitmap;
     protected Interpreter tflite;
@@ -56,7 +67,7 @@ public class MainActivity extends AppCompatActivity {
     private static final float IMAGE_STD = 1.0f;
     private static final float PROBABILITY_MEAN = 0.0f;
     private static final float PROBABILITY_STD = 255.0f;
-    private static final int PERMISSION_REQUEST_CODE = 200;
+
 
     // define XML elements
     ImageView imageView;
@@ -66,21 +77,46 @@ public class MainActivity extends AppCompatActivity {
 
     Uri imageuri;
     private List<String> labels;
+    private ImageClassifier imageClassifier;
+    private boolean imageLoaded = false;
+
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        // check if camera has permission
+        if (! checkPermission()) {
+            requestPermission();
+        }
+
+        try {
+            imageClassifier = new ImageClassifier(this);
+        } catch (IOException e) {
+            Log.e("Image Classifier Error", "ERROR: " + e);
+        }
+
+        // import tensorflow lite model
+        try {
+            tflite = new Interpreter(loadmodelfile(MainActivity.this));
+        } catch (IOException e) {
+            Log.e("Tensorflow Error", "ERROR: " + e);
+        }
+
+        // initalizing ui elements
+        initializeUIElements();
+    }
+
+
+
+    private void initializeUIElements() {
+
         imageView = (ImageView)findViewById(R.id.imageView);
         classify_button = (Button)findViewById(R.id.classify);
         take_a_picture = (Button)findViewById(R.id.take_a_picture);
         results =(TextView)findViewById(R.id.results);
-
-        // check if camera has permission
-        if (! checkPermission())
-            requestPermission();
-
 
         // select an image from gallery
         imageView.setOnClickListener(new View.OnClickListener() {
@@ -89,42 +125,54 @@ public class MainActivity extends AppCompatActivity {
                 Intent intent = new Intent();
                 intent.setType("image/*");
                 intent.setAction(Intent.ACTION_GET_CONTENT);
-                startActivityForResult(Intent.createChooser(intent,"Select Picture"),12);
+                startActivityForResult(Intent.createChooser(intent,"Select image"),SELECT_IMAGE_REQUEST_CODE);
             }
         });
 
-        // import tensorflow lite model
-        try {
-            tflite = new Interpreter(loadmodelfile(MainActivity.this));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        // take a picture from camera
+        take_a_picture.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // camera permission already checked
+                openCamera();
+            }
+        });
 
         classify_button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                try {
+                    int imageTensorIndex = 0;
+                    int[] imageShape = tflite.getInputTensor(imageTensorIndex).shape(); // {1, height, width, 3}
+                    imageSizeY = imageShape[1];
+                    imageSizeX = imageShape[2];
+                    DataType imageDataType = tflite.getInputTensor(imageTensorIndex).dataType();
 
-                int imageTensorIndex = 0;
-                int[] imageShape = tflite.getInputTensor(imageTensorIndex).shape(); // {1, height, width, 3}
-                imageSizeY = imageShape[1];
-                imageSizeX = imageShape[2];
-                DataType imageDataType = tflite.getInputTensor(imageTensorIndex).dataType();
+                    int probabilityTensorIndex = 0;
+                    int[] probabilityShape =
+                            tflite.getOutputTensor(probabilityTensorIndex).shape(); // {1, NUM_CLASSES}
+                    DataType probabilityDataType = tflite.getOutputTensor(probabilityTensorIndex).dataType();
 
-                int probabilityTensorIndex = 0;
-                int[] probabilityShape =
-                        tflite.getOutputTensor(probabilityTensorIndex).shape(); // {1, NUM_CLASSES}
-                DataType probabilityDataType = tflite.getOutputTensor(probabilityTensorIndex).dataType();
+                    inputImageBuffer = new TensorImage(imageDataType);
+                    outputProbabilityBuffer = TensorBuffer.createFixedSize(probabilityShape, probabilityDataType);
+                    probabilityProcessor = new TensorProcessor.Builder().add(getPostprocessNormalizeOp()).build();
 
-                inputImageBuffer = new TensorImage(imageDataType);
-                outputProbabilityBuffer = TensorBuffer.createFixedSize(probabilityShape, probabilityDataType);
-                probabilityProcessor = new TensorProcessor.Builder().add(getPostprocessNormalizeOp()).build();
+                    inputImageBuffer = loadImage(bitmap);
 
-                inputImageBuffer = loadImage(bitmap);
-
-                tflite.run(inputImageBuffer.getBuffer(),outputProbabilityBuffer.getBuffer().rewind());
-                showresult();
+                    tflite.run(inputImageBuffer.getBuffer(), outputProbabilityBuffer.getBuffer().rewind());
+                    showresult();
+                } catch (Exception e) {
+                    Toast.makeText(getApplicationContext(), e.toString(), Toast.LENGTH_SHORT).show();
+                    e.printStackTrace();
+                }
             }
         });
+
+    }
+
+    private void openCamera() {
+        Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        startActivityForResult(cameraIntent, CAMERA_REQUEST_CODE);
     }
 
     private boolean checkPermission() {
@@ -143,8 +191,18 @@ public class MainActivity extends AppCompatActivity {
                 PERMISSION_REQUEST_CODE);
     }
 
+    private void showMessageOKCancel(String message, DialogInterface.OnClickListener okListener) {
+        new AlertDialog.Builder(MainActivity.this)
+                .setMessage(message)
+                .setPositiveButton("OK", okListener)
+                .setNegativeButton("Cancel", null)
+                .create()
+                .show();
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         switch (requestCode) {
             case PERMISSION_REQUEST_CODE:
                 if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
@@ -176,8 +234,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-
-        if(requestCode==12 && resultCode==RESULT_OK && data!=null) {
+        //possibilità di fare switch
+        if(requestCode==SELECT_IMAGE_REQUEST_CODE && resultCode==RESULT_OK && data!=null) {
             imageuri = data.getData();
             try {
                 bitmap = MediaStore.Images.Media.getBitmap(getContentResolver(), imageuri);
@@ -186,6 +244,28 @@ public class MainActivity extends AppCompatActivity {
                 e.printStackTrace();
             }
         }
+
+        if (requestCode == CAMERA_REQUEST_CODE) {
+            // getting bitmap of the image
+            Bitmap photo = (Bitmap) Objects.requireNonNull(Objects.requireNonNull(data).getExtras()).get("data");
+            // displaying this bitmap in imageview
+            imageView.setImageBitmap(photo);
+
+            // pass this bitmap to classifier to make prediction
+            List<ImageClassifier.Recognition> predicitons = imageClassifier.recognizeImage(
+                    photo, 0);
+
+            // creating a list of string to display in list view
+            final List<String> predicitonsList = new ArrayList<>();
+            for (ImageClassifier.Recognition recog : predicitons) {
+                predicitonsList.add(recog.getName() + "  ::::::::::  " + recog.getConfidence());
+            }
+
+            results.setText(predicitonsList.get(0));
+
+        }
+
+
     }
 
     private MappedByteBuffer loadmodelfile(Activity activity) throws IOException {
