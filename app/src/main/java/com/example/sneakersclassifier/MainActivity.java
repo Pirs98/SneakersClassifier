@@ -220,7 +220,8 @@ public class MainActivity extends AppCompatActivity {
         for ( String key : predictions.keySet() ) {
             if (predictions.get(key) == maxValueInMap) {
                 float prob = predictions.get(key) * 100;
-                String result_string = "The sneakers is a " + key + " with " + prob + "% probability";
+                //String result_string = "The sneakers is a " + key + " with " + prob + "% probability";
+                String result_string = key + " with " + prob + "% probability";
                 switch (key){
                     case "Air Jordan 11":
                         buy_link = link_aj11;
