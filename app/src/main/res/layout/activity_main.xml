@@ -33,25 +33,24 @@
         app:layout_constraintVertical_bias="0.028"
         tools:srcCompat="@tools:sample/avatars" />
 
+
     <Button
         android:id="@+id/take_a_picture"
         android:layout_width="155dp"
         android:layout_height="52dp"
         android:background="@drawable/buttons"
-        android:text="TAKE A PICTURE"
+        android:text="CAPTURE"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.498"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/imageView"
-        app:layout_constraintVertical_bias="0.067"
+        app:layout_constraintVertical_bias="0.051"
         app:rippleColor="#0099FF" />
-
 
     <Button
         android:id="@+id/classify"
-        android:layout_width="151dp"
-        android:layout_height="49dp"
+        android:layout_width="155dp"
+        android:layout_height="52dp"
         android:background="@drawable/buttons"
         android:text="CLASSIFY"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -67,6 +66,7 @@
         android:layout_height="116dp"
         android:textColor="#000000"
         android:textSize="24sp"
+        android:gravity="center"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -80,6 +80,7 @@
         android:autoLink="web"
         android:textColor="#000000"
         android:textSize="20sp"
+        android:gravity="center"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.49"
